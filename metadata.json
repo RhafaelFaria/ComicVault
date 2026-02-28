@@ -1,0 +1,5 @@
+{
+  "name": "Comic Reader",
+  "description": "A comic book reader and library app that supports .cbz and .zip files.",
+  "requestFramePermissions": []
+}
