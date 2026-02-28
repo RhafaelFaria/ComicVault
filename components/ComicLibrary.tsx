@@ -1,10 +1,11 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
-import { getComics, deleteComic, saveComic, Comic } from '@/lib/db';
+import { useState, useEffect } from 'react';
+import { getComics, getComic, deleteComic, saveComic, Comic } from '@/lib/db';
 import { extractCoverImage } from '@/lib/comic-utils';
-import { Plus, Trash2, BookOpen } from 'lucide-react';
+import { Plus, Trash2, BookOpen, Edit2 } from 'lucide-react';
 import { motion } from 'motion/react';
+import ComicFormDialog from './ComicFormDialog';
 
 interface ComicLibraryProps {
   onSelectComic: (id: string) => void;
@@ -12,8 +13,8 @@ interface ComicLibraryProps {
 
 export default function ComicLibrary({ onSelectComic }: ComicLibraryProps) {
   const [comics, setComics] = useState<Omit<Comic, 'fileBuffer'>[]>([]);
-  const [isAdding, setIsAdding] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [editingComic, setEditingComic] = useState<Omit<Comic, 'fileBuffer'> | null>(null);
 
   const loadComics = async () => {
     const loaded = await getComics();
@@ -24,45 +25,58 @@ export default function ComicLibrary({ onSelectComic }: ComicLibraryProps) {
     loadComics();
   }, []);
 
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  const handleOpenAddDialog = () => {
+    setEditingComic(null);
+    setIsDialogOpen(true);
+  };
 
-    setIsAdding(true);
-    try {
-      const buffer = await file.arrayBuffer();
-      const coverDataUrl = await extractCoverImage(buffer);
+  const handleOpenEditDialog = (e: React.MouseEvent, comic: Omit<Comic, 'fileBuffer'>) => {
+    e.stopPropagation();
+    setEditingComic(comic);
+    setIsDialogOpen(true);
+  };
+
+  const handleSaveComic = async (formData: any) => {
+    if (editingComic) {
+      const fullComic = await getComic(editingComic.id);
+      if (!fullComic) throw new Error("Quadrinho não encontrado");
+
+      const updatedComic: Comic = {
+        ...fullComic,
+        title: formData.title,
+        issue: formData.issue,
+        publisher: formData.publisher,
+        coverDataUrl: formData.coverUrl || fullComic.coverDataUrl,
+      };
+      await saveComic(updatedComic);
+    } else {
+      if (!formData.file) throw new Error("Ficheiro ausente");
+      const buffer = await formData.file.arrayBuffer();
       
-      if (!coverDataUrl) {
-        alert('No images found in this file.');
-        setIsAdding(false);
-        return;
+      let finalCoverUrl = formData.coverUrl;
+      if (!finalCoverUrl) {
+         const extractedUrl = await extractCoverImage(buffer);
+         if (extractedUrl) finalCoverUrl = extractedUrl;
+         else finalCoverUrl = ''; 
       }
 
       const newComic: Comic = {
         id: crypto.randomUUID(),
-        title: file.name.replace(/\.(cbz|zip)$/i, ''),
-        coverDataUrl,
+        title: formData.title,
+        issue: formData.issue,
+        publisher: formData.publisher,
+        coverDataUrl: finalCoverUrl,
         fileBuffer: buffer,
         addedAt: Date.now(),
       };
-
       await saveComic(newComic);
-      await loadComics();
-    } catch (error) {
-      console.error('Error adding comic:', error);
-      alert('Failed to add comic. Ensure it is a valid .cbz or .zip file.');
-    } finally {
-      setIsAdding(false);
-      if (fileInputRef.current) {
-        fileInputRef.current.value = '';
-      }
     }
+    await loadComics();
   };
 
   const handleDelete = async (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
-    if (confirm('Are you sure you want to delete this comic?')) {
+    if (confirm('Tem a certeza de que deseja apagar este quadrinho?')) {
       await deleteComic(id);
       await loadComics();
     }
@@ -73,43 +87,27 @@ export default function ComicLibrary({ onSelectComic }: ComicLibraryProps) {
       <div className="flex justify-between items-center mb-8">
         <h1 className="text-3xl font-bold tracking-tight text-gray-900 flex items-center gap-2">
           <BookOpen className="w-8 h-8 text-indigo-600" />
-          My Comics
+          Os Meus Quadrinhos
         </h1>
-        <div>
-          <input
-            type="file"
-            accept=".cbz,.zip"
-            className="hidden"
-            ref={fileInputRef}
-            onChange={handleFileChange}
-          />
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            disabled={isAdding}
-            className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-xl font-medium transition-colors shadow-sm disabled:opacity-50"
-          >
-            {isAdding ? (
-              <span className="animate-pulse">Processing...</span>
-            ) : (
-              <>
-                <Plus className="w-5 h-5" />
-                Add Comic
-              </>
-            )}
-          </button>
-        </div>
+        <button
+          onClick={handleOpenAddDialog}
+          className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-xl font-medium transition-colors shadow-sm"
+        >
+          <Plus className="w-5 h-5" />
+          Adicionar Quadrinho
+        </button>
       </div>
 
       {comics.length === 0 ? (
         <div className="text-center py-20 bg-gray-50 rounded-2xl border border-gray-100 border-dashed">
           <BookOpen className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-          <h2 className="text-xl font-medium text-gray-900 mb-2">Your library is empty</h2>
-          <p className="text-gray-500 mb-6">Add a .cbz or .zip file to start reading.</p>
+          <h2 className="text-xl font-medium text-gray-900 mb-2">A sua biblioteca está vazia</h2>
+          <p className="text-gray-500 mb-6">Adicione um ficheiro .cbz ou .zip para começar a ler.</p>
           <button
-            onClick={() => fileInputRef.current?.click()}
+            onClick={handleOpenAddDialog}
             className="text-indigo-600 font-medium hover:text-indigo-700"
           >
-            Browse files
+            Adicionar agora
           </button>
         </div>
       ) : (
@@ -125,25 +123,48 @@ export default function ComicLibrary({ onSelectComic }: ComicLibraryProps) {
               <div className="relative aspect-[2/3] w-full rounded-xl overflow-hidden shadow-md group-hover:shadow-xl transition-all duration-300 bg-gray-200">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
-                  src={comic.coverDataUrl}
+                  src={comic.coverDataUrl || 'https://via.placeholder.com/300x450?text=Sem+Capa'}
                   alt={comic.title}
                   className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                 />
-                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors duration-300" />
-                <button
-                  onClick={(e) => handleDelete(e, comic.id)}
-                  className="absolute top-2 right-2 p-2 bg-white/90 text-red-600 rounded-full opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-50"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
+                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-colors duration-300 flex items-start justify-end p-2 gap-2 opacity-0 group-hover:opacity-100">
+                   <button
+                    onClick={(e) => handleOpenEditDialog(e, comic)}
+                    className="p-2 bg-white/90 text-indigo-600 rounded-full hover:bg-indigo-50 transition-colors"
+                    title="Editar"
+                  >
+                    <Edit2 className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={(e) => handleDelete(e, comic.id)}
+                    className="p-2 bg-white/90 text-red-600 rounded-full hover:bg-red-50 transition-colors"
+                    title="Apagar"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
               </div>
-              <h3 className="mt-3 text-sm font-medium text-gray-900 line-clamp-2 leading-tight">
-                {comic.title}
-              </h3>
+              <div className="mt-3">
+                <h3 className="text-sm font-medium text-gray-900 line-clamp-1 leading-tight" title={comic.title}>
+                  {comic.title}
+                </h3>
+                {(comic.issue || comic.publisher) && (
+                  <p className="text-xs text-gray-500 mt-1 line-clamp-1">
+                    {comic.issue && `Vol. ${comic.issue}`} {comic.issue && comic.publisher && '•'} {comic.publisher}
+                  </p>
+                )}
+              </div>
             </motion.div>
           ))}
         </div>
       )}
+
+      <ComicFormDialog 
+        isOpen={isDialogOpen}
+        onClose={() => setIsDialogOpen(false)}
+        onSave={handleSaveComic}
+        initialData={editingComic}
+      />
     </div>
   );
 }
