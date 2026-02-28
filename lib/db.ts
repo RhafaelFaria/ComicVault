@@ -3,6 +3,8 @@ import localforage from 'localforage';
 export interface Comic {
   id: string;
   title: string;
+  issue?: string;
+  publisher?: string;
   coverDataUrl: string;
   fileBuffer: ArrayBuffer;
   addedAt: number;
@@ -23,6 +25,8 @@ export async function getComics(): Promise<Omit<Comic, 'fileBuffer'>[]> {
     comics.push({
       id: value.id,
       title: value.title,
+      issue: value.issue,
+      publisher: value.publisher,
       coverDataUrl: value.coverDataUrl,
       addedAt: value.addedAt,
     });
