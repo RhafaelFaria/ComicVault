@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { getComics, getComic, deleteComic, saveComic, Comic } from '@/lib/db';
 import { extractCoverImage } from '@/lib/comic-utils';
-import { Plus, Trash2, BookOpen, Edit2 } from 'lucide-react';
+import { Plus, Trash2, BookOpen, Edit2, Search } from 'lucide-react';
 import { motion } from 'motion/react';
 import ComicFormDialog from './ComicFormDialog';
 
@@ -13,6 +13,7 @@ interface ComicLibraryProps {
 
 export default function ComicLibrary({ onSelectComic }: ComicLibraryProps) {
   const [comics, setComics] = useState<Omit<Comic, 'fileBuffer'>[]>([]);
+  const [searchQuery, setSearchQuery] = useState(''); // Estado para a barra de busca
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingComic, setEditingComic] = useState<Omit<Comic, 'fileBuffer'> | null>(null);
 
@@ -82,20 +83,46 @@ export default function ComicLibrary({ onSelectComic }: ComicLibraryProps) {
     }
   };
 
+  // A Mágica do Filtro acontece aqui:
+  const filteredComics = comics.filter((comic) => {
+    const searchLower = searchQuery.toLowerCase();
+    const titleMatch = comic.title.toLowerCase().includes(searchLower);
+    const publisherMatch = comic.publisher?.toLowerCase().includes(searchLower) || false;
+    const issueMatch = comic.issue?.toLowerCase().includes(searchLower) || false;
+    return titleMatch || publisherMatch || issueMatch;
+  });
+
   return (
     <div className="p-6 max-w-7xl mx-auto">
-      <div className="flex justify-between items-center mb-8">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
         <h1 className="text-3xl font-bold tracking-tight text-gray-900 flex items-center gap-2">
           <BookOpen className="w-8 h-8 text-indigo-600" />
           Os Meus Quadrinhos
         </h1>
-        <button
-          onClick={handleOpenAddDialog}
-          className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-xl font-medium transition-colors shadow-sm"
-        >
-          <Plus className="w-5 h-5" />
-          Adicionar Quadrinho
-        </button>
+        
+        <div className="flex w-full sm:w-auto items-center gap-4">
+          {/* Barra de Pesquisa Nova */}
+          <div className="relative flex-1 sm:w-64">
+            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+              <Search className="h-4 w-4 text-gray-400" />
+            </div>
+            <input
+              type="text"
+              placeholder="Pesquisar coleção..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all text-sm"
+            />
+          </div>
+
+          <button
+            onClick={handleOpenAddDialog}
+            className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-xl font-medium transition-colors shadow-sm whitespace-nowrap"
+          >
+            <Plus className="w-5 h-5" />
+            <span className="hidden sm:inline">Adicionar</span>
+          </button>
+        </div>
       </div>
 
       {comics.length === 0 ? (
@@ -110,9 +137,15 @@ export default function ComicLibrary({ onSelectComic }: ComicLibraryProps) {
             Adicionar agora
           </button>
         </div>
+      ) : filteredComics.length === 0 ? (
+         <div className="text-center py-20">
+          <Search className="w-12 h-12 text-gray-300 mx-auto mb-4" />
+          <h2 className="text-lg font-medium text-gray-900">Nenhum resultado encontrado</h2>
+          <p className="text-gray-500">Tente buscar por outro título, editora ou número de edição.</p>
+        </div>
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-6">
-          {comics.map((comic) => (
+          {filteredComics.map((comic) => (
             <motion.div
               key={comic.id}
               initial={{ opacity: 0, y: 20 }}

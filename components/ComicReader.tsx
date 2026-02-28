@@ -21,7 +21,6 @@ export default function ComicReader({ comicId, onClose }: ComicReaderProps) {
   const [currentImageUrl, setCurrentImageUrl] = useState<string | null>(null);
   const [isImageLoading, setIsImageLoading] = useState(false);
 
-  // Cache for object URLs to avoid recreating them
   const urlCache = useRef<Record<number, string>>({});
 
   useEffect(() => {
@@ -30,7 +29,7 @@ export default function ComicReader({ comicId, onClose }: ComicReaderProps) {
       try {
         const comic = await getComic(comicId);
         if (!comic) {
-          alert('Comic not found');
+          alert('Quadrinho não encontrado');
           onClose();
           return;
         }
@@ -41,8 +40,8 @@ export default function ComicReader({ comicId, onClose }: ComicReaderProps) {
           setIsLoading(false);
         }
       } catch (error) {
-        console.error('Failed to load comic:', error);
-        alert('Failed to load comic');
+        console.error('Falha ao carregar quadrinho:', error);
+        alert('Falha ao carregar quadrinho');
         onClose();
       }
     };
@@ -58,7 +57,6 @@ export default function ComicReader({ comicId, onClose }: ComicReaderProps) {
     const loadImage = async () => {
       setIsImageLoading(true);
       
-      // Check cache first
       if (urlCache.current[currentIndex]) {
         setCurrentImageUrl(urlCache.current[currentIndex]);
         setIsImageLoading(false);
@@ -73,12 +71,11 @@ export default function ComicReader({ comicId, onClose }: ComicReaderProps) {
             setIsImageLoading(false);
           }
         } catch (error) {
-          console.error('Failed to load image:', error);
+          console.error('Falha ao carregar imagem:', error);
           if (isMounted) setIsImageLoading(false);
         }
       }
 
-      // Preload next image
       if (currentIndex < archive.files.length - 1) {
         const nextIndex = currentIndex + 1;
         if (!urlCache.current[nextIndex]) {
@@ -89,7 +86,6 @@ export default function ComicReader({ comicId, onClose }: ComicReaderProps) {
         }
       }
 
-      // Preload prev image
       if (currentIndex > 0) {
         const prevIndex = currentIndex - 1;
         if (!urlCache.current[prevIndex]) {
@@ -100,7 +96,6 @@ export default function ComicReader({ comicId, onClose }: ComicReaderProps) {
         }
       }
 
-      // Cleanup old cache entries to save memory
       Object.keys(urlCache.current).forEach(key => {
         const idx = parseInt(key);
         if (Math.abs(idx - currentIndex) > 2) {
@@ -111,11 +106,9 @@ export default function ComicReader({ comicId, onClose }: ComicReaderProps) {
     };
 
     loadImage();
-
     return () => { isMounted = false; };
   }, [archive, currentIndex]);
 
-  // Cleanup object URLs on unmount
   useEffect(() => {
     const cache = urlCache.current;
     return () => {
@@ -134,6 +127,11 @@ export default function ComicReader({ comicId, onClose }: ComicReaderProps) {
       setCurrentIndex(prev => prev - 1);
     }
   }, [currentIndex]);
+
+  const handleSliderChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newIndex = parseInt(e.target.value, 10);
+    setCurrentIndex(newIndex);
+  };
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -154,7 +152,7 @@ export default function ComicReader({ comicId, onClose }: ComicReaderProps) {
     return (
       <div className="fixed inset-0 bg-black z-50 flex flex-col items-center justify-center text-white">
         <Loader2 className="w-12 h-12 animate-spin mb-4 text-indigo-500" />
-        <p className="text-lg font-medium">Opening comic...</p>
+        <p className="text-lg font-medium">A abrir quadrinho...</p>
       </div>
     );
   }
@@ -163,6 +161,7 @@ export default function ComicReader({ comicId, onClose }: ComicReaderProps) {
 
   return (
     <div className="fixed inset-0 bg-black z-50 flex flex-col overflow-hidden select-none">
+      
       {/* Top Controls */}
       <AnimatePresence>
         {showControls && (
@@ -175,19 +174,17 @@ export default function ComicReader({ comicId, onClose }: ComicReaderProps) {
             <div className="flex items-center gap-4">
               <button
                 onClick={onClose}
-                className="p-2 bg-white/10 hover:bg-white/20 rounded-full text-white transition-colors"
+                className="flex items-center gap-2 px-3 py-2 bg-white/10 hover:bg-white/20 rounded-lg text-white transition-colors text-sm font-medium"
               >
-                <X className="w-6 h-6" />
+                <X className="w-5 h-5" />
+                Voltar à Estante
               </button>
-              <span className="text-white font-medium">
-                Page {currentIndex + 1} of {archive.files.length}
-              </span>
             </div>
             <div className="flex items-center gap-2">
               <button
                 onClick={() => setFitMode(prev => prev === 'height' ? 'width' : 'height')}
                 className="p-2 bg-white/10 hover:bg-white/20 rounded-full text-white transition-colors"
-                title="Toggle Fit Mode"
+                title="Ajustar à Tela"
               >
                 {fitMode === 'height' ? <Maximize className="w-5 h-5" /> : <Minimize className="w-5 h-5" />}
               </button>
@@ -201,6 +198,7 @@ export default function ComicReader({ comicId, onClose }: ComicReaderProps) {
         className="flex-1 flex items-center justify-center relative overflow-auto"
         onClick={() => setShowControls(prev => !prev)}
       >
+        {/* Áreas invisíveis para clicar e passar de página */}
         <div className="absolute inset-y-0 left-0 w-1/3 z-10 cursor-w-resize" onClick={(e) => { e.stopPropagation(); handlePrev(); }} />
         <div className="absolute inset-y-0 right-0 w-1/3 z-10 cursor-e-resize" onClick={(e) => { e.stopPropagation(); handleNext(); }} />
         
@@ -215,7 +213,7 @@ export default function ComicReader({ comicId, onClose }: ComicReaderProps) {
             <motion.img
               key={currentIndex}
               src={currentImageUrl}
-              alt={`Page ${currentIndex + 1}`}
+              alt={`Página ${currentIndex + 1}`}
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
@@ -229,13 +227,59 @@ export default function ComicReader({ comicId, onClose }: ComicReaderProps) {
         </AnimatePresence>
       </div>
 
-      {/* Bottom Progress */}
-      <div className="absolute bottom-0 left-0 right-0 h-1 bg-white/20 z-20">
-        <div 
-          className="h-full bg-indigo-500 transition-all duration-300"
-          style={{ width: `${((currentIndex + 1) / archive.files.length) * 100}%` }}
-        />
-      </div>
+      {/* Bottom Controls (Slider e Paginação) */}
+      <AnimatePresence>
+        {showControls && (
+          <motion.div
+            initial={{ y: 100 }}
+            animate={{ y: 0 }}
+            exit={{ y: 100 }}
+            className="absolute bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-black/90 to-transparent flex flex-col gap-4 z-20"
+          >
+            <div className="text-center text-white/80 text-sm font-medium">
+              Página {currentIndex + 1} de {archive.files.length}
+            </div>
+            
+            <div className="flex items-center gap-4 max-w-2xl mx-auto w-full">
+              <button 
+                onClick={(e) => { e.stopPropagation(); handlePrev(); }}
+                disabled={currentIndex === 0}
+                className="p-2 text-white/70 hover:text-white disabled:opacity-30 transition-colors"
+              >
+                <ChevronLeft className="w-6 h-6" />
+              </button>
+
+              <input
+                type="range"
+                min="0"
+                max={archive.files.length - 1}
+                value={currentIndex}
+                onChange={handleSliderChange}
+                onClick={(e) => e.stopPropagation()}
+                className="flex-1 h-2 bg-white/20 rounded-lg appearance-none cursor-pointer accent-indigo-500"
+              />
+
+              <button 
+                onClick={(e) => { e.stopPropagation(); handleNext(); }}
+                disabled={currentIndex === archive.files.length - 1}
+                className="p-2 text-white/70 hover:text-white disabled:opacity-30 transition-colors"
+              >
+                <ChevronRight className="w-6 h-6" />
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Barra de progresso fininha (aparece quando os controles estão escondidos) */}
+      {!showControls && (
+        <div className="absolute bottom-0 left-0 right-0 h-1 bg-white/20 z-20">
+          <div 
+            className="h-full bg-indigo-500 transition-all duration-300"
+            style={{ width: `${((currentIndex + 1) / archive.files.length) * 100}%` }}
+          />
+        </div>
+      )}
     </div>
   );
 }
