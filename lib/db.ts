@@ -5,11 +5,10 @@ export interface Comic {
   title: string;
   issue?: string;
   publisher?: string;
+  collectionName?: string; // Novo campo para agrupar as coleções
   coverDataUrl: string;
   fileBuffer: ArrayBuffer;
   addedAt: number;
-  
-  // Novos campos de Estado e Memória:
   currentPage?: number;
   totalPages?: number;
   isFavorite?: boolean;
@@ -33,6 +32,7 @@ export async function getComics(): Promise<Omit<Comic, 'fileBuffer'>[]> {
       title: value.title,
       issue: value.issue,
       publisher: value.publisher,
+      collectionName: value.collectionName,
       coverDataUrl: value.coverDataUrl,
       addedAt: value.addedAt,
       currentPage: value.currentPage,
