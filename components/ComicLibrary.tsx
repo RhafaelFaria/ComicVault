@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { getComics, getComic, deleteComic, saveComic, Comic } from '@/lib/db';
 import { extractCoverImage } from '@/lib/comic-utils';
-import { Plus, Trash2, BookOpen, Edit2, Search, Heart, CheckCircle2 } from 'lucide-react';
+import { Plus, Trash2, BookOpen, Edit2, Search, Heart, CheckCircle2, Layers, ArrowLeft } from 'lucide-react';
 import { motion } from 'motion/react';
 import ComicFormDialog from './ComicFormDialog';
 
@@ -17,6 +17,9 @@ export default function ComicLibrary({ onSelectComic }: ComicLibraryProps) {
   const [filterMode, setFilterMode] = useState<'all' | 'favorites' | 'unread'>('all');
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingComic, setEditingComic] = useState<Omit<Comic, 'fileBuffer'> | null>(null);
+  
+  // Novo estado para controlar se estamos dentro de uma pasta de coleção
+  const [selectedCollection, setSelectedCollection] = useState<string | null>(null);
 
   const loadComics = async () => {
     const loaded = await getComics();
@@ -65,7 +68,6 @@ export default function ComicLibrary({ onSelectComic }: ComicLibraryProps) {
     } else {
       if (!formData.files || formData.files.length === 0) throw new Error("Ficheiros ausentes");
 
-      // Loop para processar VÁRIOS ficheiros ao mesmo tempo
       for (const file of formData.files) {
         const buffer = await file.arrayBuffer();
         
@@ -76,7 +78,6 @@ export default function ComicLibrary({ onSelectComic }: ComicLibraryProps) {
            else finalCoverUrl = ''; 
         }
 
-        // Tentar adivinhar o número da edição a partir do nome do ficheiro (ex: The_Boys_05 -> 05)
         const match = file.name.match(/(\d+)/);
         const autoIssue = match ? match[0] : '';
         const autoTitle = file.name.replace(/\.(cbz|zip)$/i, '');
@@ -108,6 +109,7 @@ export default function ComicLibrary({ onSelectComic }: ComicLibraryProps) {
     }
   };
 
+  // 1. Filtra tudo (Busca + Abas)
   const filteredComics = comics.filter((comic) => {
     if (filterMode === 'favorites' && !comic.isFavorite) return false;
     if (filterMode === 'unread' && comic.isRead) return false;
@@ -119,6 +121,72 @@ export default function ComicLibrary({ onSelectComic }: ComicLibraryProps) {
     
     return titleMatch || publisherMatch || collectionMatch;
   });
+
+  // 2. Separa o que é "Coleção" do que é "Quadrinho Solto"
+  const groupedCollections = filteredComics.reduce((acc, comic) => {
+    if (comic.collectionName) {
+      if (!acc[comic.collectionName]) acc[comic.collectionName] = [];
+      acc[comic.collectionName].push(comic);
+    }
+    return acc;
+  }, {} as Record<string, Omit<Comic, 'fileBuffer'>[]>);
+
+  const standaloneComics = filteredComics.filter(comic => !comic.collectionName);
+
+  // Reutiliza o design do Card Individual para não repetir código
+  const renderComicCard = (comic: Omit<Comic, 'fileBuffer'>) => (
+    <motion.div
+      key={comic.id}
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="group relative cursor-pointer flex flex-col"
+      onClick={() => onSelectComic(comic.id)}
+    >
+      <div className="relative aspect-[2/3] w-full rounded-xl overflow-hidden shadow-md group-hover:shadow-xl transition-all duration-300 bg-gray-200">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={comic.coverDataUrl || 'https://via.placeholder.com/300x450?text=Sem+Capa'}
+          alt={comic.title}
+          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+        />
+        
+        <div className="absolute top-2 left-2 flex flex-col gap-2">
+          {comic.isRead && <div className="bg-green-500 text-white p-1 rounded-full shadow-md" title="Lido"><CheckCircle2 className="w-4 h-4" /></div>}
+          <button onClick={(e) => handleToggleFavorite(e, comic.id)} className={`p-1.5 rounded-full shadow-md transition-colors ${comic.isFavorite ? 'bg-rose-500 text-white' : 'bg-white/80 text-gray-400 hover:text-rose-500'}`}>
+            <Heart className="w-4 h-4" fill={comic.isFavorite ? "currentColor" : "none"} />
+          </button>
+        </div>
+
+        {comic.totalPages && comic.totalPages > 0 && !comic.isRead && (
+          <div className="absolute bottom-0 left-0 right-0 h-1.5 bg-black/40">
+            <div className="h-full bg-indigo-500" style={{ width: `${((comic.currentPage || 0) / (comic.totalPages - 1)) * 100}%` }} />
+          </div>
+        )}
+
+        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-colors duration-300 flex items-start justify-end p-2 gap-2 opacity-0 group-hover:opacity-100">
+            <button onClick={(e) => handleOpenEditDialog(e, comic)} className="p-2 bg-white/90 text-indigo-600 rounded-full hover:bg-indigo-50 transition-colors" title="Editar">
+            <Edit2 className="w-4 h-4" />
+          </button>
+          <button onClick={(e) => handleDelete(e, comic.id)} className="p-2 bg-white/90 text-red-600 rounded-full hover:bg-red-50 transition-colors" title="Apagar">
+            <Trash2 className="w-4 h-4" />
+          </button>
+        </div>
+      </div>
+      <div className="mt-3">
+        {!selectedCollection && comic.collectionName && (
+          <span className="text-xs font-semibold text-indigo-600 uppercase tracking-wider block mb-1 truncate">
+            {comic.collectionName}
+          </span>
+        )}
+        <h3 className="text-sm font-medium text-gray-900 line-clamp-1 leading-tight" title={comic.title}>{comic.title}</h3>
+        {(comic.issue || comic.publisher) && (
+          <p className="text-xs text-gray-500 mt-1 line-clamp-1">
+            {comic.issue && `Vol. ${comic.issue}`} {comic.issue && comic.publisher && '•'} {comic.publisher}
+          </p>
+        )}
+      </div>
+    </motion.div>
+  );
 
   return (
     <div className="p-6 max-w-7xl mx-auto">
@@ -137,7 +205,7 @@ export default function ComicLibrary({ onSelectComic }: ComicLibraryProps) {
               type="text"
               placeholder="Pesquisar títulos ou coleções..."
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              onChange={(e) => { setSearchQuery(e.target.value); setSelectedCollection(null); }}
               className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none text-sm"
             />
           </div>
@@ -151,7 +219,7 @@ export default function ComicLibrary({ onSelectComic }: ComicLibraryProps) {
         </div>
       </div>
 
-      {comics.length > 0 && (
+      {!selectedCollection && comics.length > 0 && (
         <div className="flex gap-2 mb-8 border-b border-gray-200 pb-2 overflow-x-auto">
           <button onClick={() => setFilterMode('all')} className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors whitespace-nowrap ${filterMode === 'all' ? 'bg-indigo-100 text-indigo-700' : 'text-gray-500 hover:bg-gray-100'}`}>Toda a Coleção</button>
           <button onClick={() => setFilterMode('favorites')} className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors flex items-center gap-1.5 whitespace-nowrap ${filterMode === 'favorites' ? 'bg-rose-100 text-rose-700' : 'text-gray-500 hover:bg-gray-100'}`}><Heart className="w-4 h-4" /> Favoritos</button>
@@ -171,62 +239,70 @@ export default function ComicLibrary({ onSelectComic }: ComicLibraryProps) {
           <Search className="w-12 h-12 text-gray-300 mx-auto mb-4" />
           <h2 className="text-lg font-medium text-gray-900">Nenhum resultado encontrado</h2>
         </div>
+      ) : selectedCollection ? (
+        
+        /* === TELA 2: DENTRO DA COLEÇÃO === */
+        <div className="animate-in fade-in duration-300">
+          <div className="flex items-center gap-4 mb-6 pb-4 border-b border-gray-100">
+            <button 
+              onClick={() => setSelectedCollection(null)} 
+              className="p-2 bg-white border border-gray-200 hover:bg-gray-50 rounded-full transition-colors"
+            >
+              <ArrowLeft className="w-5 h-5 text-gray-700" />
+            </button>
+            <div>
+              <h2 className="text-2xl font-bold text-gray-900">{selectedCollection}</h2>
+              <p className="text-sm text-gray-500">{groupedCollections[selectedCollection]?.length || 0} edições nesta coleção</p>
+            </div>
+          </div>
+          
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-6">
+            {groupedCollections[selectedCollection]
+              ?.sort((a, b) => (a.issue || '').localeCompare(b.issue || '', undefined, {numeric: true}))
+              .map(renderComicCard)
+            }
+          </div>
+        </div>
+
       ) : (
+
+        /* === TELA 1: ESTANTE PRINCIPAL (PASTAS + SOLTOS) === */
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-6">
-          {filteredComics.map((comic) => (
+          
+          {/* PASTAS (Coleções) */}
+          {Object.entries(groupedCollections).map(([collectionName, collectionComics]) => (
             <motion.div
-              key={comic.id}
+              key={`folder-${collectionName}`}
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               className="group relative cursor-pointer flex flex-col"
-              onClick={() => onSelectComic(comic.id)}
+              onClick={() => setSelectedCollection(collectionName)}
             >
-              <div className="relative aspect-[2/3] w-full rounded-xl overflow-hidden shadow-md group-hover:shadow-xl transition-all duration-300 bg-gray-200">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
+              <div className="relative aspect-[2/3] w-full rounded-xl overflow-hidden shadow-md group-hover:shadow-xl transition-all duration-300 bg-gray-900">
+                {/* Usa a capa da primeira edição escurecida como fundo da pasta */}
                 <img
-                  src={comic.coverDataUrl || 'https://via.placeholder.com/300x450?text=Sem+Capa'}
-                  alt={comic.title}
-                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                  src={collectionComics[0].coverDataUrl || 'https://via.placeholder.com/300x450?text=Sem+Capa'}
+                  className="w-full h-full object-cover opacity-50 group-hover:opacity-30 transition-opacity duration-300"
+                  alt={collectionName}
                 />
-                
-                <div className="absolute top-2 left-2 flex flex-col gap-2">
-                  {comic.isRead && <div className="bg-green-500 text-white p-1 rounded-full shadow-md" title="Lido"><CheckCircle2 className="w-4 h-4" /></div>}
-                  <button onClick={(e) => handleToggleFavorite(e, comic.id)} className={`p-1.5 rounded-full shadow-md transition-colors ${comic.isFavorite ? 'bg-rose-500 text-white' : 'bg-white/80 text-gray-400 hover:text-rose-500'}`}>
-                    <Heart className="w-4 h-4" fill={comic.isFavorite ? "currentColor" : "none"} />
-                  </button>
-                </div>
-
-                {comic.totalPages && comic.totalPages > 0 && !comic.isRead && (
-                  <div className="absolute bottom-0 left-0 right-0 h-1.5 bg-black/40">
-                    <div className="h-full bg-indigo-500" style={{ width: `${((comic.currentPage || 0) / (comic.totalPages - 1)) * 100}%` }} />
+                <div className="absolute inset-0 flex flex-col items-center justify-center text-white">
+                  <div className="bg-black/40 backdrop-blur-md p-3 rounded-full mb-2 group-hover:scale-110 transition-transform">
+                    <Layers className="w-8 h-8 text-indigo-400" />
                   </div>
-                )}
-
-                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-colors duration-300 flex items-start justify-end p-2 gap-2 opacity-0 group-hover:opacity-100">
-                   <button onClick={(e) => handleOpenEditDialog(e, comic)} className="p-2 bg-white/90 text-indigo-600 rounded-full hover:bg-indigo-50 transition-colors" title="Editar">
-                    <Edit2 className="w-4 h-4" />
-                  </button>
-                  <button onClick={(e) => handleDelete(e, comic.id)} className="p-2 bg-white/90 text-red-600 rounded-full hover:bg-red-50 transition-colors" title="Apagar">
-                    <Trash2 className="w-4 h-4" />
-                  </button>
+                  <span className="font-bold text-3xl shadow-sm">{collectionComics.length}</span>
+                  <span className="text-[10px] font-bold uppercase tracking-widest bg-black/60 px-2 py-1 rounded mt-1">Edições</span>
                 </div>
               </div>
-              <div className="mt-3">
-                {/* Exibe a Coleção acima do título, se existir */}
-                {comic.collectionName && (
-                  <span className="text-xs font-semibold text-indigo-600 uppercase tracking-wider block mb-1 truncate">
-                    {comic.collectionName}
-                  </span>
-                )}
-                <h3 className="text-sm font-medium text-gray-900 line-clamp-1 leading-tight" title={comic.title}>{comic.title}</h3>
-                {(comic.issue || comic.publisher) && (
-                  <p className="text-xs text-gray-500 mt-1 line-clamp-1">
-                    {comic.issue && `Vol. ${comic.issue}`} {comic.issue && comic.publisher && '•'} {comic.publisher}
-                  </p>
-                )}
+              <div className="mt-3 text-center">
+                <h3 className="text-sm font-bold text-gray-900 line-clamp-1" title={collectionName}>{collectionName}</h3>
+                <p className="text-xs text-indigo-600 font-medium mt-1 uppercase tracking-wider">Coleção</p>
               </div>
             </motion.div>
           ))}
+
+          {/* QUADRINHOS SOLTOS */}
+          {standaloneComics.map(renderComicCard)}
+
         </div>
       )}
 
