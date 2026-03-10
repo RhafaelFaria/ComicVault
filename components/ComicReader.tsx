@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { getComic } from '@/lib/db';
+import { getComic, saveComic } from '@/lib/db';
 import { openComicArchive, getImageUrl, ComicArchive } from '@/lib/comic-utils';
 import { ChevronLeft, ChevronRight, X, Maximize, Minimize, Loader2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -37,6 +37,8 @@ export default function ComicReader({ comicId, onClose }: ComicReaderProps) {
         const loadedArchive = await openComicArchive(comic.fileBuffer);
         if (isMounted) {
           setArchive(loadedArchive);
+          // A Mágica da Memória: carrega a página onde parou
+          setCurrentIndex(comic.currentPage || 0);
           setIsLoading(false);
         }
       } catch (error) {
@@ -49,6 +51,30 @@ export default function ComicReader({ comicId, onClose }: ComicReaderProps) {
     loadComic();
     return () => { isMounted = false; };
   }, [comicId, onClose]);
+
+  // A Mágica de Salvar: Salva o progresso a cada mudança de página (com um pequeno delay para não travar)
+  useEffect(() => {
+    const saveProgress = async () => {
+      if (!archive || !comicId) return;
+      try {
+        const comic = await getComic(comicId);
+        if (comic) {
+          comic.currentPage = currentIndex;
+          comic.totalPages = archive.files.length;
+          // Se chegou à última página, marca como lido!
+          if (currentIndex === archive.files.length - 1) {
+            comic.isRead = true;
+          }
+          await saveComic(comic);
+        }
+      } catch (e) {
+        console.error("Erro ao guardar progresso", e);
+      }
+    };
+    
+    const timeoutId = setTimeout(saveProgress, 1000);
+    return () => clearTimeout(timeoutId);
+  }, [currentIndex, archive, comicId]);
 
   useEffect(() => {
     if (!archive) return;
@@ -162,7 +188,6 @@ export default function ComicReader({ comicId, onClose }: ComicReaderProps) {
   return (
     <div className="fixed inset-0 bg-black z-50 flex flex-col overflow-hidden select-none">
       
-      {/* Top Controls */}
       <AnimatePresence>
         {showControls && (
           <motion.div
@@ -193,12 +218,10 @@ export default function ComicReader({ comicId, onClose }: ComicReaderProps) {
         )}
       </AnimatePresence>
 
-      {/* Main Image Area */}
       <div 
         className="flex-1 flex items-center justify-center relative overflow-auto"
         onClick={() => setShowControls(prev => !prev)}
       >
-        {/* Áreas invisíveis para clicar e passar de página */}
         <div className="absolute inset-y-0 left-0 w-1/3 z-10 cursor-w-resize" onClick={(e) => { e.stopPropagation(); handlePrev(); }} />
         <div className="absolute inset-y-0 right-0 w-1/3 z-10 cursor-e-resize" onClick={(e) => { e.stopPropagation(); handleNext(); }} />
         
@@ -227,7 +250,6 @@ export default function ComicReader({ comicId, onClose }: ComicReaderProps) {
         </AnimatePresence>
       </div>
 
-      {/* Bottom Controls (Slider e Paginação) */}
       <AnimatePresence>
         {showControls && (
           <motion.div
@@ -271,7 +293,6 @@ export default function ComicReader({ comicId, onClose }: ComicReaderProps) {
         )}
       </AnimatePresence>
 
-      {/* Barra de progresso fininha (aparece quando os controles estão escondidos) */}
       {!showControls && (
         <div className="absolute bottom-0 left-0 right-0 h-1 bg-white/20 z-20">
           <div 

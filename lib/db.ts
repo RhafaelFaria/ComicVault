@@ -8,6 +8,12 @@ export interface Comic {
   coverDataUrl: string;
   fileBuffer: ArrayBuffer;
   addedAt: number;
+  
+  // Novos campos de Estado e Memória:
+  currentPage?: number;
+  totalPages?: number;
+  isFavorite?: boolean;
+  isRead?: boolean;
 }
 
 const comicsStore = localforage.createInstance({
@@ -29,6 +35,10 @@ export async function getComics(): Promise<Omit<Comic, 'fileBuffer'>[]> {
       publisher: value.publisher,
       coverDataUrl: value.coverDataUrl,
       addedAt: value.addedAt,
+      currentPage: value.currentPage,
+      totalPages: value.totalPages,
+      isFavorite: value.isFavorite,
+      isRead: value.isRead,
     });
   });
   return comics.sort((a, b) => b.addedAt - a.addedAt);
